@@ -497,92 +497,221 @@ sequenceDiagram
   - Artifact Registry
   - Service accounts
 
-## 🚀 Prerequisites
+## 🚀 Quick Start
 
+Get up and running in 3 simple steps using our automated deployment scripts:
+
+### Step 1: Initial Setup
+```bash
+# Clone the repository
+git clone https://github.com/AmeerHossam/Chatbot.git
+cd chatbot
+
+# Configure your environment
+export PROJECT_ID="your-gcp-project-id"
+export REGION="us-central1"
+
+# Run GCP setup (enables APIs, creates Firestore, stores GitHub token)
+./scripts/setup_gcp.sh
+```
+
+### Step 2: Configure Variables
+Update `terraform/terraform.tfvars` with your project details:
+```hcl
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+```
+
+### Step 3: Deploy Everything
+```bash
+# One command to build and deploy all services!
+./scripts/deploy.sh
+```
+
+That's it! 🎉 The script will:
+- ✅ Create Artifact Registry
+- ✅ Build Docker images for all services
+- ✅ Push images to registry
+- ✅ Deploy infrastructure with Terraform
+- ✅ Output your service URLs
+
+---
+
+## 📋 Prerequisites
+
+### Required
 - **GCP Project** with billing enabled
-- **APIs Enabled**:
-  - Cloud Run API
-  - Vertex AI API
-  - Pub/Sub API
-  - Secret Manager API
-  - Firestore API
-  - Artifact Registry API
 - **GitHub Personal Access Token** with `repo` scope
 - **Local Tools**:
   - `gcloud` CLI (authenticated)
   - `terraform` >= 1.5
   - `docker` (with linux/amd64 support)
 
-## 📋 Setup Instructions
+### Automated Setup Scripts
+Our setup scripts can handle most of the GCP configuration for you! See the [Deployment Scripts](#-deployment-scripts) section below.
 
-### 1. Clone Repository
+### APIs Required
+The following APIs will be enabled automatically by `setup_gcp.sh`, or enable manually:
+- Cloud Run API
+- Vertex AI API
+- Pub/Sub API
+- Secret Manager API
+- Firestore API
+- Artifact Registry API
+- Cloud Build API
+
+## 📋 Detailed Setup Instructions
+
+Choose between automated or manual setup based on your preference.
+
+### Option A: Automated Setup (Recommended)
+
+The fastest way to get started using our automation scripts:
+
+#### 1. Clone Repository
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/AmeerHossam/Chatbot.git
 cd chatbot
 ```
 
-### 2. Configure Environment
-Update the following in `terraform/variables.tf` or export as environment variables:
-
+#### 2. Set Environment Variables
 ```bash
 export PROJECT_ID="your-gcp-project-id"
 export REGION="us-central1"
-export GITHUB_REPO_URL="https://github.com/owner/repo.git"
-export GITHUB_REPO_OWNER="owner"
-export GITHUB_REPO_NAME="repo"
 ```
 
-### 3. Store GitHub Token in Secret Manager
+#### 3. Run GCP Setup Script
 ```bash
-echo -n "your-github-pat" | gcloud secrets create github-pat \
-  --data-file=- \
-  --project=$PROJECT_ID
+./scripts/setup_gcp.sh
 ```
 
-### 4. Configure Terraform Variables
-Edit `terraform/terraform.tfvars`:
+This script will:
+- Set your active GCP project
+- Enable all required APIs
+- Create Firestore database
+- Prompt for and securely store GitHub PAT in Secret Manager
 
+#### 4. Configure Terraform Variables
+Edit `terraform/terraform.tfvars`:
 ```hcl
 project_id = "your-gcp-project-id"
 region     = "us-central1"
 ```
 
-### 5. Deploy Infrastructure
+You can also copy and customize `.env.example` for reference:
 ```bash
-# Initialize Terraform
-cd terraform
-terraform init
-
-# Review plan
-terraform plan
-
-# Apply
-terraform apply
+cp .env.example .env
+# Edit .env with your configuration
 ```
 
-### 6. Build and Deploy Services (Alternative: Use Deploy Script)
+#### 5. Initialize Terraform
 ```bash
-# Run automated deployment
+cd terraform
+terraform init
+cd ..
+```
+
+#### 6. Deploy Everything
+```bash
 ./scripts/deploy.sh
 ```
 
-Or manually:
+This single command will:
+- Create Artifact Registry repository
+- Build all Docker images (backend, worker, frontend)
+- Push images to Artifact Registry
+- Deploy infrastructure with Terraform
+- Display your service URLs
+
+---
+
+### Option B: Manual Setup
+
+For users who prefer step-by-step control:
+
+#### 1. Clone Repository
 ```bash
-# Authenticate Docker with Artifact Registry
-gcloud auth configure-docker us-central1-docker.pkg.dev
+git clone https://github.com/AmeerHossam/Chatbot.git
+cd chatbot
+```
 
-# Build and push images
-docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/$PROJECT_ID/chatbot/backend:latest ./backend
-docker push us-central1-docker.pkg.dev/$PROJECT_ID/chatbot/backend:latest
+#### 2. Set GCP Project
+```bash
+export PROJECT_ID="your-gcp-project-id"
+export REGION="us-central1"
+gcloud config set project $PROJECT_ID
+```
 
-docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/$PROJECT_ID/chatbot/worker:latest ./worker
-docker push us-central1-docker.pkg.dev/$PROJECT_ID/chatbot/worker:latest
+#### 3. Enable Required APIs
+```bash
+gcloud services enable \
+    run.googleapis.com \
+    aiplatform.googleapis.com \
+    pubsub.googleapis.com \
+    firestore.googleapis.com \
+    secretmanager.googleapis.com \
+    artifactregistry.googleapis.com \
+    cloudbuild.googleapis.com
+```
 
-docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/$PROJECT_ID/chatbot/frontend:latest ./frontend
-docker push us-central1-docker.pkg.dev/$PROJECT_ID/chatbot/frontend:latest
+#### 4. Create Firestore Database
+```bash
+gcloud firestore databases create --location=$REGION --type=firestore-native
+```
 
-# Deploy with Terraform
+#### 5. Store GitHub Token in Secret Manager
+```bash
+echo -n "your-github-pat" | gcloud secrets create github-pat \
+  --data-file=- \
+  --replication-policy="automatic" \
+  --project=$PROJECT_ID
+```
+
+#### 6. Create Artifact Registry
+```bash
+gcloud artifacts repositories create chatbot \
+  --repository-format=docker \
+  --location=$REGION \
+  --description="Docker images for chatbot services"
+
+gcloud auth configure-docker ${REGION}-docker.pkg.dev
+```
+
+#### 7. Configure Terraform
+Edit `terraform/terraform.tfvars`:
+```hcl
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+```
+
+#### 8. Initialize Terraform
+```bash
 cd terraform
+terraform init
+cd ..
+```
+
+#### 9. Build and Push Docker Images
+```bash
+REGISTRY_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/chatbot"
+
+# Build and push backend
+docker build --platform linux/amd64 -t ${REGISTRY_URL}/backend:latest ./backend
+docker push ${REGISTRY_URL}/backend:latest
+
+# Build and push worker
+docker build --platform linux/amd64 -t ${REGISTRY_URL}/worker:latest ./worker
+docker push ${REGISTRY_URL}/worker:latest
+
+# Build and push frontend
+docker build --platform linux/amd64 -t ${REGISTRY_URL}/frontend:latest ./frontend
+docker push ${REGISTRY_URL}/frontend:latest
+```
+
+#### 10. Deploy Infrastructure
+```bash
+cd terraform
+terraform plan
 terraform apply
 ```
 
@@ -638,23 +767,130 @@ gcloud run jobs execute git-worker \
   --project=$PROJECT_ID
 ```
 
+## 📜 Deployment Scripts
+
+The `scripts/` directory contains automation scripts to simplify deployment:
+
+### `setup_gcp.sh`
+**Purpose**: Initial GCP project setup and configuration
+
+**What it does**:
+- Sets the active GCP project
+- Enables all required APIs (Cloud Run, Vertex AI, Pub/Sub, Firestore, etc.)
+- Creates Firestore database if it doesn't exist
+- Prompts for GitHub Personal Access Token
+- Securely stores GitHub PAT in Secret Manager
+
+**Usage**:
+```bash
+export PROJECT_ID="your-project-id"
+export REGION="us-central1"
+./scripts/setup_gcp.sh
+```
+
+### `setup_artifact_registry.sh`
+**Purpose**: Create and configure Google Artifact Registry
+
+**What it does**:
+- Creates Artifact Registry repository for Docker images
+- Configures Docker authentication with gcloud
+- Displays repository URL and usage examples
+
+**Usage**:
+```bash
+export PROJECT_ID="your-project-id"
+export REGION="us-central1"
+./scripts/setup_artifact_registry.sh
+```
+
+### `deploy.sh`
+**Purpose**: Complete end-to-end deployment
+
+**What it does**:
+- Runs artifact registry setup
+- Builds Docker images for all services (backend, worker, frontend)
+- Pushes images to Artifact Registry
+- Deploys infrastructure using Terraform
+- Displays deployed service URLs
+
+**Usage**:
+```bash
+export PROJECT_ID="your-project-id"
+export REGION="us-central1"
+./scripts/deploy.sh
+```
+
+**Features**:
+- ✅ Colored output for easy reading
+- ✅ Automatic platform targeting (linux/amd64) for Cloud Run
+- ✅ Handles Terraform initialization
+- ✅ Displays backend and frontend URLs after deployment
+
+### `delete_artifact_registry.sh`
+**Purpose**: Clean up Artifact Registry resources
+
+**What it does**:
+- Deletes the Artifact Registry repository
+- Useful for cleanup or starting fresh
+
+**Usage**:
+```bash
+export PROJECT_ID="your-project-id"
+export REGION="us-central1"
+./scripts/delete_artifact_registry.sh
+```
+
+---
+
 ## 🔧 Configuration
 
 ### Environment Variables
 
-#### Backend
-- `PROJECT_ID` - GCP Project ID
-- `REGION` - GCP Region
-- `PUBSUB_TOPIC` - Pub/Sub topic name (default: `dataset-pr-requests`)
+A complete `.env.example` file is provided in the repository root. Key variables include:
 
-#### Worker
-- `PROJECT_ID` - GCP Project ID
+#### GCP Configuration
+- `PROJECT_ID` - Your GCP Project ID
+- `REGION` - GCP Region (e.g., `us-central1`)
+- `LOCATION` - Same as REGION for most services
+
+#### Vertex AI
+- `VERTEX_AI_MODEL` - AI model to use (default: `gemini-1.5-flash`)
+
+#### Pub/Sub
+- `PUBSUB_TOPIC` - Topic name (default: `dataset-pr-requests`)
 - `PUBSUB_SUBSCRIPTION` - Subscription name (default: `git-worker-sub`)
-- `GITHUB_TOKEN_SECRET_NAME` - Secret Manager secret name (default: `github-pat`)
-- `GITHUB_REPO_URL` - Full GitHub repository URL
-- `GITHUB_REPO_OWNER` - Repository owner
+
+#### Firestore
+- `FIRESTORE_DATABASE` - Database name (default: `(default)`)
+
+#### GitHub Configuration
+- `GITHUB_REPO_URL` - Full repository URL
+- `GITHUB_REPO_OWNER` - Repository owner username
 - `GITHUB_REPO_NAME` - Repository name
-- `TERRAFORM_FILES_DIRECTORY` - Directory for Terraform files (default: `datasets`)
+- `GITHUB_TOKEN_SECRET_NAME` - Secret Manager secret name (default: `github-pat`)
+- `GITHUB_DEFAULT_BRANCH` - Default branch (default: `main`)
+
+#### Terraform
+- `TERRAFORM_FILES_DIRECTORY` - Where to store generated files (default: `datasets`)
+
+#### Local Development (Optional)
+- `PORT` - Local server port (default: `8080`)
+- `LOG_LEVEL` - Logging level (default: `INFO`)
+
+**Usage**:
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your values
+vim .env
+
+# Source for local development
+source .env
+```
+
+> [!NOTE]
+> For production deployment, environment variables are set in Terraform configuration and Cloud Run service definitions. The `.env` file is primarily for local development and reference.
 
 ## 📊 Monitoring & Logs
 
@@ -746,38 +982,45 @@ gcloud projects get-iam-policy $PROJECT_ID \
 
 ```
 chatbot/
-├── backend/              # FastAPI backend service
-│   ├── main.py          # Main API endpoints
-│   ├── vertex_ai.py     # Vertex AI integration
+├── .env.example         # Environment variables template
+├── README.md           # This file
+├── backend/            # FastAPI backend service
+│   ├── main.py         # Main API endpoints
+│   ├── vertex_ai.py    # Vertex AI integration
 │   ├── state_manager.py # Firestore state management
-│   ├── pubsub_publisher.py
+│   ├── pubsub_publisher.py # Pub/Sub publisher
 │   ├── requirements.txt
 │   └── Dockerfile
-├── worker/              # Cloud Run Job worker
+├── worker/             # Cloud Run Job worker
 │   ├── main.py         # Job entry point
-│   ├── git_operations.py
-│   ├── terraform_generator.py
-│   ├── github_api.py
+│   ├── git_operations.py # Git automation
+│   ├── terraform_generator.py # Terraform file generation
+│   ├── github_api.py   # GitHub API integration
 │   ├── requirements.txt
+│   ├── templates/      # Terraform templates
 │   └── Dockerfile
 ├── frontend/           # Static web interface
-│   ├── index.html
-│   ├── styles.css
-│   ├── app.js
-│   ├── nginx.conf
+│   ├── index.html      # Main HTML
+│   ├── styles.css      # Styling
+│   ├── app.js          # Chat interface logic
+│   ├── nginx.conf      # Nginx configuration
 │   └── Dockerfile
 ├── terraform/          # Infrastructure as Code
 │   ├── provider.tf
-│   ├── backend_service.tf
-│   ├── worker_service.tf
-│   ├── frontend_service.tf
-│   ├── pubsub.tf
-│   ├── service_accounts.tf
-│   ├── artifact_registry.tf
-│   ├── variables.tf
-│   └── outputs.tf
-└── scripts/
-    └── deploy.sh      # Automated deployment script
+│   ├── backend.tf      # Terraform backend config
+│   ├── backend_service.tf # Backend Cloud Run service
+│   ├── worker_service.tf  # Worker Cloud Run job
+│   ├── frontend_service.tf # Frontend Cloud Run service
+│   ├── pubsub.tf       # Pub/Sub resources
+│   ├── firestore.tf    # Firestore configuration
+│   ├── variables.tf    # Input variables
+│   ├── outputs.tf      # Output values
+│   └── terraform.tfvars # Variable values (create this)
+└── scripts/            # Automation scripts
+    ├── deploy.sh       # Complete deployment automation
+    ├── setup_gcp.sh    # GCP project setup
+    ├── setup_artifact_registry.sh # Registry setup
+    └── delete_artifact_registry.sh # Cleanup script
 ```
 
 ## 🔐 Security Best Practices
