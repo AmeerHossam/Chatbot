@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataset Chatbot - AI-Powered Infrastructure</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="chat-container">
+            <div class="header">
+                <h1>🤖 Dataset Chatbot</h1>
+                <p class="subtitle">AI-powered BigQuery dataset creation</p>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot-message">
+                    <div class="message-content">
+                        <p>👋 Hi! I can help you create BigQuery datasets through natural conversation.</p>
+                        <p>Just tell me what you need, and I'll collect the necessary information:</p>
+                        <ul>
+                            <li>Dataset name</li>
+                            <li>GCP region/location</li>
+                            <li>Labels</li>
+                            <li>Service account</li>
+                        </ul>
+                        <p>Try saying: <em>"I need a dataset for marketing analytics"</em></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-container">
+                <form id="chatForm">
+                    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required>
+                    <button type="submit" id="sendButton">
+                        <span id="sendIcon">Send</span>
+                    </button>
+                </form>
+            </div>
+
+            <div class="status-bar" id="statusBar">
+                <span id="statusText">Ready</span>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <h3>Current Session</h3>
+            <p><strong>Session ID:</strong> <span id="sessionId">-</span></p>
+            <p><strong>Status:</strong> <span id="sessionStatus">Idle</span></p>
+
+            <div class="collected-info" id="collectedInfo">
+                <h4>Collected Information</h4>
+                <div id="infoList">
+                    <p class="empty-state">No information collected yet</p>
+                </div>
+            </div>
+
+            <div class="instructions">
+                <h4>How it works</h4>
+                <ol>
+                    <li>Describe your dataset needs</li>
+                    <li>Answer follow-up questions</li>
+                    <li>Review and confirm</li>
+                    <li>Get your Pull Request link!</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
