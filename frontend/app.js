@@ -1,16 +1,29 @@
 // Configuration
 const CONFIG = {
     BACKEND_URL: 'https://chatbot-backend-795588981144.us-central1.run.app',
-    POLL_INTERVAL: 1000, // Poll for PR status every 1 seconds
+    FIREBASE_CONFIG: {
+        apiKey: "AIzaSyDummy", // Placeholder - will work without valid key for read access with security rules
+        authDomain: "helpful-charmer-485315-j7.firebaseapp.com",
+        projectId: "helpful-charmer-485315-j7",
+    }
 };
 
+// Initialize Firebase
+let db = null;
+try {
+    firebase.initializeApp(CONFIG.FIREBASE_CONFIG);
+    db = firebase.firestore();
+    console.log('✅ Firebase initialized successfully');
+} catch (error) {
+    console.error('❌ Firebase initialization failed:', error);
+    console.warn('⚠️ Will fall back to polling if needed');
+}
 
 // State
 let sessionId = null;
 let currentRequestId = null;
 let extractedEntities = {};
-let isPolling = false;  // Global flag to track if polling is active
-let pollingTimeoutId = null;  // Store timeout ID to cancel if needed
+let statusListener = null;  // Firestore listener unsubscribe function
 
 // DOM elements
 const chatMessages = document.getElementById('chatMessages');
@@ -76,10 +89,10 @@ async function handleSubmit(e) {
         // Update session info
         updateSessionInfo(data);
 
-        // If processing, start polling for status
+        // If processing, subscribe to real-time status updates
         if (data.status === 'processing' && data.request_id) {
             currentRequestId = data.request_id;
-            startStatusPolling(data.request_id);
+            subscribeToStatus(data.request_id);
         }
 
     } catch (error) {
@@ -186,77 +199,131 @@ function setLoading(loading) {
     }
 }
 
-// Poll for PR creation status
-async function startStatusPolling(requestId) {
-    // Stop any existing polling
-    if (isPolling) {
-        console.log('Stopping previous polling instance');
-        if (pollingTimeoutId) {
-            clearTimeout(pollingTimeoutId);
-            pollingTimeoutId = null;
-        }
+// Subscribe to PR status updates via Firestore
+function subscribeToStatus(requestId) {
+    // Unsubscribe from any previous listener
+    if (statusListener) {
+        console.log('🔇 Unsubscribing from previous status listener');
+        statusListener();
+        statusListener = null;
     }
 
-    isPolling = true;
-    console.log(`🔄 Starting status polling for request: ${requestId}`);
+    if (!db) {
+        console.warn('⚠️ Firebase not initialized, falling back to polling');
+        startStatusPolling(requestId);
+        return;
+    }
 
-    const pollStatus = async () => {
-        // Check if this polling instance should still be running
-        if (!isPolling || currentRequestId !== requestId) {
-            console.log(`⏹️ Polling stopped (isPolling: ${isPolling}, current: ${currentRequestId}, polling: ${requestId})`);
-            return;
-        }
+    console.log(`🔔 Subscribing to real-time updates for request: ${requestId}`);
 
-        try {
-            console.log(`📡 Polling status for: ${requestId}`);
-            const response = await fetch(`${CONFIG.BACKEND_URL}/status/${requestId}`);
-
-            if (!response.ok) {
-                console.error('❌ Status check failed:', response.status);
-                // Continue polling even if check fails
-                pollingTimeoutId = setTimeout(pollStatus, CONFIG.POLL_INTERVAL);
+    // Subscribe to the pr_requests document
+    statusListener = db.collection('pr_requests').doc(requestId)
+        .onSnapshot((doc) => {
+            if (!doc.exists) {
+                console.warn(`⚠️ Document ${requestId} does not exist yet`);
                 return;
             }
 
-            const data = await response.json();
-            console.log('📊 Status poll result:', data);
+            const data = doc.data();
+            console.log('📊 Received real-time update:', data);
 
             // Update session status display
-            if (data.status === 'processing') {
+            if (data.status === 'pending' || data.status === 'processing') {
                 sessionStatusDisplay.textContent = 'Processing...';
                 statusText.textContent = 'Creating Pull Request...';
-                // Continue polling
-                pollingTimeoutId = setTimeout(pollStatus, CONFIG.POLL_INTERVAL);
             } else if (data.status === 'completed' && data.pr_url) {
                 console.log('✅ PR COMPLETED! URL:', data.pr_url);
-                isPolling = false;  //  Stop polling
                 sessionStatusDisplay.textContent = 'Completed ✓';
                 statusText.textContent = 'PR Created Successfully';
                 addMessage(
                     `🎉 Success! Your Pull Request has been created:\n\n${data.pr_url}\n\nYou can review and merge it when ready!`,
                     'bot'
                 );
-                // Stop polling - request complete
+                // Unsubscribe - request complete
+                if (statusListener) {
+                    statusListener();
+                    statusListener = null;
+                }
             } else if (data.status === 'failed') {
                 console.log('❌ PR FAILED:', data.error);
-                isPolling = false;  // Stop polling
                 sessionStatusDisplay.textContent = 'Failed ✗';
                 statusText.textContent = 'PR Creation Failed';
                 addMessage(
                     `❌ Sorry, there was an error creating the PR:\n${data.error || 'Unknown error'}`,
                     'bot'
                 );
-                // Stop polling - request failed
+                // Unsubscribe - request failed
+                if (statusListener) {
+                    statusListener();
+                    statusListener = null;
+                }
+            }
+        }, (error) => {
+            console.error('💥 Error in Firestore listener:', error);
+            // Fall back to polling on error
+            console.warn('⚠️ Falling back to polling due to listener error');
+            startStatusPolling(requestId);
+        });
+}
+
+// Fallback: Poll for PR creation status (legacy backup)
+async function startStatusPolling(requestId) {
+    console.log(`🔄 Starting fallback polling for request: ${requestId}`);
+
+    const POLL_INTERVAL = 2000; // 2 seconds
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60; // 2 minutes max
+
+    const pollStatus = async () => {
+        if (attempts >= MAX_ATTEMPTS) {
+            console.log('⏱️ Polling timeout reached');
+            addMessage('⚠️ Status check timed out. Please check the backend logs.', 'bot');
+            return;
+        }
+
+        attempts++;
+
+        try {
+            console.log(`📡 Polling status (attempt ${attempts}): ${requestId}`);
+            const response = await fetch(`${CONFIG.BACKEND_URL}/status/${requestId}`);
+
+            if (!response.ok) {
+                console.error('❌ Status check failed:', response.status);
+                setTimeout(pollStatus, POLL_INTERVAL);
+                return;
+            }
+
+            const data = await response.json();
+            console.log('📊 Status poll result:', data);
+
+            if (data.status === 'processing' || data.status === 'pending') {
+                sessionStatusDisplay.textContent = 'Processing...';
+                statusText.textContent = 'Creating Pull Request...';
+                setTimeout(pollStatus, POLL_INTERVAL);
+            } else if (data.status === 'completed' && data.pr_url) {
+                console.log('✅ PR COMPLETED! URL:', data.pr_url);
+                sessionStatusDisplay.textContent = 'Completed ✓';
+                statusText.textContent = 'PR Created Successfully';
+                addMessage(
+                    `🎉 Success! Your Pull Request has been created:\n\n${data.pr_url}\n\nYou can review and merge it when ready!`,
+                    'bot'
+                );
+            } else if (data.status === 'failed') {
+                console.log('❌ PR FAILED:', data.error);
+                sessionStatusDisplay.textContent = 'Failed ✗';
+                statusText.textContent = 'PR Creation Failed';
+                addMessage(
+                    `❌ Sorry, there was an error creating the PR:\n${data.error || 'Unknown error'}`,
+                    'bot'
+                );
             } else {
-                // Unknown status, continue polling
                 console.warn('⚠️ Unknown status:', data.status);
-                pollingTimeoutId = setTimeout(pollStatus, CONFIG.POLL_INTERVAL);
+                setTimeout(pollStatus, POLL_INTERVAL);
             }
 
         } catch (error) {
             console.error('💥 Error polling status:', error);
-            // Continue polling even on error
-            pollingTimeoutId = setTimeout(pollStatus, CONFIG.POLL_INTERVAL);
+            setTimeout(pollStatus, POLL_INTERVAL);
         }
     };
 

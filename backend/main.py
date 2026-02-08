@@ -322,7 +322,11 @@ async def chat(request: ChatRequest):
 
 @app.get("/status/{request_id}", response_model=StatusResponse)
 async def get_status(request_id: str):
-    """Get the status of a PR creation request."""
+    """Get the status of a PR creation request.
+    
+    NOTE: This endpoint is primarily kept for debugging and fallback purposes.
+    The frontend now uses Firestore real-time listeners for instant status updates.
+    """
     try:
         pr_request = state_manager.get_pr_request(request_id)
         
